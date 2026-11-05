@@ -56,6 +56,29 @@ async def get_crawler_status():
     return crawler_manager.get_status()
 
 
+@router.post("/queue")
+async def enqueue_crawler(request: CrawlerStartRequest):
+    """Add a task to the queue (任务队列); starts immediately when idle."""
+    return await crawler_manager.enqueue(request)
+
+
+@router.get("/queue")
+async def list_queue():
+    return {"running": crawler_manager.get_status(), "queue": crawler_manager.list_queue()}
+
+
+@router.delete("/queue/{task_id}")
+async def remove_queued(task_id: int):
+    if not crawler_manager.remove_from_queue(task_id):
+        raise HTTPException(status_code=404, detail="Task not in queue")
+    return {"removed": task_id}
+
+
+@router.delete("/queue")
+async def clear_queue():
+    return {"cleared": crawler_manager.clear_queue()}
+
+
 @router.get("/logs")
 async def get_logs(limit: int = 100):
     """Get recent logs"""

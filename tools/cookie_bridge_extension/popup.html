@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 13px system-ui, sans-serif; width: 300px; margin: 12px; }
+  label { display: block; margin: 8px 0 2px; color: #444; }
+  input, select { width: 100%; box-sizing: border-box; padding: 5px; }
+  button { margin-top: 12px; width: 100%; padding: 7px; cursor: pointer; }
+  #msg { margin-top: 10px; white-space: pre-wrap; }
+  .err { color: #b00020; } .ok { color: #1b7f3b; }
+</style>
+</head>
+<body>
+  <label>平台</label>
+  <select id="platform">
+    <option value="xhs">小红书</option><option value="dy">抖音</option><option value="ks">快手</option>
+    <option value="bili">B站</option><option value="wb">微博</option><option value="tieba">贴吧</option>
+    <option value="zhihu">知乎</option>
+  </select>
+  <label>账号备注名（可选）</label>
+  <input id="name" placeholder="例如：小号1">
+  <label>绑定代理（可选）</label>
+  <input id="proxy" placeholder="http://user:pwd@1.2.3.4:8000">
+  <label>MediaCrawler 地址</label>
+  <input id="server" value="http://127.0.0.1:8080">
+  <button id="sync">同步当前登录的 Cookie 到账号池</button>
+  <div id="msg"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

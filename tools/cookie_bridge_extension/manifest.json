@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "MediaCrawler Cookie 同步",
+  "version": "1.0.0",
+  "description": "把浏览器里已登录平台的 Cookie 一键同步到 MediaCrawler 账号池",
+  "permissions": ["cookies", "storage"],
+  "host_permissions": [
+    "*://*.xiaohongshu.com/*",
+    "*://*.douyin.com/*",
+    "*://*.kuaishou.com/*",
+    "*://*.bilibili.com/*",
+    "*://*.weibo.com/*",
+    "*://*.weibo.cn/*",
+    "*://*.baidu.com/*",
+    "*://*.zhihu.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "同步 Cookie" }
+}

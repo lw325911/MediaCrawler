@@ -17,10 +17,11 @@
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 import asyncio
+import itertools
 import subprocess
 import signal
 import os
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from datetime import datetime
 from pathlib import Path
 
@@ -43,6 +44,9 @@ class CrawlerManager:
         self._project_root = Path(__file__).parent.parent.parent
         # Log queue - for pushing to WebSocket
         self._log_queue: Optional[asyncio.Queue] = None
+        # Task queue: tasks waiting to run after the current one (任务队列)
+        self._task_queue: List[Tuple[int, CrawlerStartRequest]] = []
+        self._task_ids = itertools.count(1)
 
     @property
     def logs(self) -> List[LogEntry]:
@@ -190,7 +194,53 @@ class CrawlerManager:
                 self._read_task.cancel()
                 self._read_task = None
 
-            return True
+        # Continue with the next queued task (clear the queue first to stop everything).
+        self._schedule_next()
+        return True
+
+    # ------------------------------------------------------------------ task queue
+    def is_running(self) -> bool:
+        return bool(self.process and self.process.poll() is None)
+
+    async def enqueue(self, config: CrawlerStartRequest) -> dict:
+        """Add a task; it starts right away when nothing is running."""
+        task_id = next(self._task_ids)
+        self._task_queue.append((task_id, config))
+        if not self.is_running():
+            await self._start_next()
+        return {"task_id": task_id, "queue": self.list_queue()}
+
+    def list_queue(self) -> List[dict]:
+        return [
+            {"task_id": tid, "platform": cfg.platform.value, "crawler_type": cfg.crawler_type.value,
+             "keywords": cfg.keywords, "specified_ids": cfg.specified_ids, "creator_ids": cfg.creator_ids}
+            for tid, cfg in self._task_queue
+        ]
+
+    def remove_from_queue(self, task_id: int) -> bool:
+        before = len(self._task_queue)
+        self._task_queue = [(tid, cfg) for tid, cfg in self._task_queue if tid != task_id]
+        return len(self._task_queue) < before
+
+    def clear_queue(self) -> int:
+        n = len(self._task_queue)
+        self._task_queue = []
+        return n
+
+    def _schedule_next(self) -> None:
+        if self._task_queue:
+            try:
+                asyncio.get_running_loop().create_task(self._start_next())
+            except RuntimeError:
+                pass
+
+    async def _start_next(self) -> None:
+        while self._task_queue and not self.is_running():
+            task_id, config = self._task_queue.pop(0)
+            entry = self._create_log_entry(f"Starting queued task #{task_id}", "info")
+            await self._push_log(entry)
+            if await self.start(config):
+                return
 
     def get_status(self) -> dict:
         """Get current status"""
@@ -282,6 +332,7 @@ class CrawlerManager:
                     entry = self._create_log_entry(f"Crawler exited with code: {exit_code}", "warning")
                 await self._push_log(entry)
                 self.status = "idle"
+                self._schedule_next()
 
         except asyncio.CancelledError:
             pass
