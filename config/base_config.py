@@ -104,6 +104,17 @@ START_PAGE = 1
 ENABLE_CHECKPOINT = True
 CHECKPOINT_DIR = "data/checkpoints"
 
+# 多账号池：开启后忽略 LOGIN_TYPE/COOKIES，从账号池里挑最久没用过的账号（cookie 登录）运行；
+# 账号被风控、报错或任务中途停止时自动冷却该账号并切换下一个，配合断点续爬从中断处继续。
+# 每个账号使用独立的浏览器目录；账号配置了 proxy 时固定走该代理（账号与 IP 绑定）。
+# 账号管理：uv run python -m account_pool --help，或 WebUI 接口 /api/accounts。命令行开关：--account_pool
+ENABLE_ACCOUNT_POOL = False
+ACCOUNT_POOL_FILE = "data/accounts/accounts.json"
+ACCOUNT_COOLDOWN_SEC = 600  # 第 n 次连续失败冷却 600 * 2^(n-1) 秒
+ACCOUNT_MAX_FAILS = 3  # 连续失败达到该次数标记为失效，需要更新 cookie 后在管理中重置
+ACCOUNT_MAX_SWITCHES = 0  # 单次任务最多切换账号次数，0 = 账号数 * 2
+ACCOUNT_WAIT_FOR_COOLDOWN = False  # 所有账号都在冷却时是否等待，而不是直接结束
+
 # Control the number of crawled videos/posts
 CRAWLER_MAX_NOTES_COUNT = 15
 

@@ -1,0 +1,12 @@
+.git
+.venv
+**/__pycache__
+**/node_modules
+.pytest_cache
+data
+browser_data
+*_user_data_dir
+database/*.db
+webui/dist
+api/webui
+.env

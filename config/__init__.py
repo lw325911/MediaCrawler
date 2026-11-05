@@ -20,3 +20,7 @@
 
 from .base_config import *
 from .db_config import *
+
+from .env_override import apply_env_overrides as _apply_env_overrides
+
+_apply_env_overrides(globals())

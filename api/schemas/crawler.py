@@ -77,6 +77,9 @@ class CrawlerStartRequest(BaseModel):
     headless: bool = False
     max_notes_count: Optional[int] = Field(default=None, ge=1, le=MAX_API_LIMIT_COUNT)
     max_comments_count: Optional[int] = Field(default=None, ge=1, le=MAX_API_LIMIT_COUNT)
+    # None = use config default
+    resume: Optional[bool] = None  # 断点续爬
+    use_account_pool: Optional[bool] = None  # 多账号池
 
 
 class CrawlerStatusResponse(BaseModel):

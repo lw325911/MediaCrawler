@@ -237,6 +237,11 @@ class CrawlerManager:
 
         cmd.extend(["--headless", "true" if config.headless else "false"])
 
+        if config.resume is not None:
+            cmd.extend(["--resume", "true" if config.resume else "false"])
+        if config.use_account_pool is not None:
+            cmd.extend(["--account_pool", "true" if config.use_account_pool else "false"])
+
         return cmd
 
     async def _read_output(self):

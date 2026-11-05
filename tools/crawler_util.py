@@ -25,10 +25,12 @@
 
 import base64
 import json
+import os
 import random
 import re
 import urllib
 import urllib.parse
+import sys
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple, cast
 
@@ -98,8 +100,24 @@ def show_qrcode(qr_code) -> None:  # type: ignore
     new_image.paste(image, (10, 10))
     draw = ImageDraw.Draw(new_image)
     draw.rectangle((0, 0, width + 19, height + 19), outline=(0, 0, 0), width=1)
-    del ImageShow.UnixViewer.options["save_all"]
-    new_image.show()
+
+    # Always save the QR code so it can be scanned on servers / in Docker,
+    # where no image viewer is available.
+    qrcode_path = os.path.abspath(os.getenv("MC_QRCODE_PATH", os.path.join("data", "login_qrcode.png")))
+    try:
+        os.makedirs(os.path.dirname(qrcode_path), exist_ok=True)
+        new_image.save(qrcode_path)
+        utils.logger.info(f"[show_qrcode] 登录二维码已保存到: {qrcode_path}，请用 App 扫码")
+    except OSError as e:
+        utils.logger.warning(f"[show_qrcode] 保存二维码失败: {e}")
+
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        return  # headless Linux: no viewer, the saved file is the way to scan
+    ImageShow.UnixViewer.options.pop("save_all", None)
+    try:
+        new_image.show()
+    except Exception as e:  # viewer missing should not break login
+        utils.logger.warning(f"[show_qrcode] 无法弹出二维码窗口，请打开上面保存的图片扫码: {e}")
 
 
 def get_user_agent() -> str:

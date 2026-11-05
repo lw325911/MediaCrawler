@@ -97,6 +97,40 @@ async def _generate_wordcloud_if_needed() -> None:
         print(f"[Main] Error generating wordcloud: {e}")
 
 
+async def _close_crawler(c: Optional[AbstractCrawler]) -> None:
+    if not c:
+        return
+    if getattr(c, "cdp_manager", None):
+        try:
+            await c.cdp_manager.cleanup(force=True)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "closed" not in error_msg and "disconnected" not in error_msg:
+                print(f"[Main] Error cleaning up CDP browser: {e}")
+
+    elif getattr(c, "browser_context", None):
+        try:
+            await c.browser_context.close()
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "closed" not in error_msg and "disconnected" not in error_msg:
+                print(f"[Main] Error closing browser context: {e}")
+
+
+async def _run_with_account_pool() -> None:
+    """Run the task with the account pool, switching accounts on failure."""
+    from account_pool.runner import run_with_account_pool
+
+    async def run_once() -> bool:
+        global crawler
+        await _close_crawler(crawler)
+        crawler = CrawlerFactory.create_crawler(platform=config.PLATFORM)
+        await crawler.start()
+        return not getattr(crawler, "_task_interrupted", False)
+
+    await run_with_account_pool(run_once)
+
+
 async def main() -> None:
     global crawler
 
@@ -110,8 +144,11 @@ async def main() -> None:
     if config.SAVE_DATA_OPTION in ("sqlite", "mysql", "db", "postgres"):
         await db.init_db(config.SAVE_DATA_OPTION)
 
-    crawler = CrawlerFactory.create_crawler(platform=config.PLATFORM)
-    await crawler.start()
+    if config.ENABLE_ACCOUNT_POOL:
+        await _run_with_account_pool()
+    else:
+        crawler = CrawlerFactory.create_crawler(platform=config.PLATFORM)
+        await crawler.start()
 
     _flush_excel_if_needed()
 
@@ -122,22 +159,7 @@ async def main() -> None:
 
 async def async_cleanup() -> None:
     global crawler
-    if crawler:
-        if getattr(crawler, "cdp_manager", None):
-            try:
-                await crawler.cdp_manager.cleanup(force=True)
-            except Exception as e:
-                error_msg = str(e).lower()
-                if "closed" not in error_msg and "disconnected" not in error_msg:
-                    print(f"[Main] Error cleaning up CDP browser: {e}")
-
-        elif getattr(crawler, "browser_context", None):
-            try:
-                await crawler.browser_context.close()
-            except Exception as e:
-                error_msg = str(e).lower()
-                if "closed" not in error_msg and "disconnected" not in error_msg:
-                    print(f"[Main] Error closing browser context: {e}")
+    await _close_crawler(crawler)
 
     if config.SAVE_DATA_OPTION in ("db", "sqlite"):
         await db.close()

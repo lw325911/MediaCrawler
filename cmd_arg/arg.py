@@ -199,6 +199,15 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
                 show_default=True,
             ),
         ] = str(config.ENABLE_CHECKPOINT),
+        account_pool: Annotated[
+            str,
+            typer.Option(
+                "--account_pool",
+                help="Use the multi-account pool (多账号池), true/false. Manage accounts with: python -m account_pool",
+                rich_help_panel="Account Configuration",
+                show_default=True,
+            ),
+        ] = str(config.ENABLE_ACCOUNT_POOL),
         keywords: Annotated[
             str,
             typer.Option(
@@ -370,6 +379,7 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
         config.CRAWLER_TYPE = crawler_type.value
         config.START_PAGE = start
         config.ENABLE_CHECKPOINT = _to_bool(resume)
+        config.ENABLE_ACCOUNT_POOL = _to_bool(account_pool)
         config.KEYWORDS = keywords
         config.ENABLE_GET_COMMENTS = enable_comment
         config.ENABLE_GET_SUB_COMMENTS = enable_sub_comment
