@@ -45,6 +45,14 @@ def sign(url: str, cookies: str) -> Dict:
     Returns:
 
     """
+    from sign_service.client import remote_enabled, remote_sign
+
+    if remote_enabled():
+        return remote_sign("zhihu", {"url": url, "cookies": cookies})
+    return _zhihu_sign_local(url, cookies)
+
+
+def _zhihu_sign_local(url: str, cookies: str) -> Dict:
     global ZHIHU_SGIN_JS
     if not ZHIHU_SGIN_JS:
         with open("libs/zhihu.js", mode="r", encoding="utf-8-sig") as f:

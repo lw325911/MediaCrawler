@@ -75,6 +75,14 @@ def get_a_bogus_from_js(url: str, params: str, user_agent: str):
     Returns:
 
     """
+    from sign_service.client import remote_enabled, remote_sign
+
+    if remote_enabled():
+        return remote_sign("dy", {"url": url, "params": params, "user_agent": user_agent})["a_bogus"]
+    return _get_a_bogus_local(url, params, user_agent)
+
+
+def _get_a_bogus_local(url: str, params: str, user_agent: str) -> str:
     sign_js_name = "sign_datail"
     if "/reply" in url:
         sign_js_name = "sign_reply"

@@ -115,6 +115,13 @@ ACCOUNT_MAX_FAILS = 3  # 连续失败达到该次数标记为失效，需要更�
 ACCOUNT_MAX_SWITCHES = 0  # 单次任务最多切换账号次数，0 = 账号数 * 2
 ACCOUNT_WAIT_FOR_COOLDOWN = False  # 所有账号都在冷却时是否等待，而不是直接结束
 
+# 签名服务：为空时在本进程内签名；填写后小红书/抖音/知乎的请求签名改为调用独立签名服务，
+# 启动方式：uv run uvicorn sign_service.server:app --port 8989，然后设置为 "http://127.0.0.1:8989"
+# 快手、B站、微博、贴吧的签名仍依赖浏览器或本地算法，不走签名服务。
+SIGN_SRV_URL = ""
+SIGN_SRV_TIMEOUT = 10
+SIGN_SRV_TOKEN = ""  # 与签名服务端环境变量 SIGN_SRV_TOKEN 一致时才允许调用
+
 # Control the number of crawled videos/posts
 CRAWLER_MAX_NOTES_COUNT = 15
 

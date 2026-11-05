@@ -1,6 +1,7 @@
 # MediaCrawler docker-compose
 #   docker compose up -d                 # WebUI at http://localhost:8080
 #   docker compose --profile mysql up -d # also start MySQL (set MC_SAVE_DATA_OPTION=db)
+#   docker compose --profile sign up -d  # also start the sign service (set MC_SIGN_SRV_URL=http://signsrv:8989)
 #   docker compose run --rm crawler --platform xhs --lt cookie --cookies "a=b; c=d" --type search --keywords 编程
 # Any config value can be overridden with MC_<NAME>, see config/env_override.py
 
@@ -31,6 +32,15 @@ services:
     profiles: ["cli"]
     entrypoint: ["python", "main.py"]
     command: ["--help"]
+
+  # Standalone sign service; point crawlers at it with MC_SIGN_SRV_URL=http://signsrv:8989
+  signsrv:
+    <<: *common
+    profiles: ["sign"]
+    command: ["uvicorn", "sign_service.server:app", "--host", "0.0.0.0", "--port", "8989"]
+    environment:
+      SIGN_SRV_TOKEN: ${SIGN_SRV_TOKEN:-}
+    restart: unless-stopped
 
   mysql:
     image: mysql:8.0

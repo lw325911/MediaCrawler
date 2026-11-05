@@ -36,6 +36,20 @@ def sign_with_xhshow(
     cookie_str: str = "",
     method: str = "POST",
 ) -> Dict[str, Any]:
+    """Sign in-process, or through the sign service when SIGN_SRV_URL is set."""
+    from sign_service.client import remote_enabled, remote_sign
+
+    if remote_enabled():
+        return remote_sign("xhs", {"uri": uri, "data": data, "cookie_str": cookie_str, "method": method})
+    return _sign_with_xhshow_local(uri, data, cookie_str, method)
+
+
+def _sign_with_xhshow_local(
+    uri: str,
+    data: Optional[Union[Dict, str]] = None,
+    cookie_str: str = "",
+    method: str = "POST",
+) -> Dict[str, Any]:
     """
     使用 xhshow 纯算法生成完整签名请求头
 
