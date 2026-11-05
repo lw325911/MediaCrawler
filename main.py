@@ -119,7 +119,7 @@ async def _close_crawler(c: Optional[AbstractCrawler]) -> None:
 
 async def _run_with_account_pool() -> None:
     """Run the task with the account pool, switching accounts on failure."""
-    from account_pool.runner import run_with_account_pool
+    from account_pool.runner import NoAccountAvailableError, run_with_account_pool
 
     async def run_once() -> bool:
         global crawler
@@ -128,7 +128,11 @@ async def _run_with_account_pool() -> None:
         await crawler.start()
         return not getattr(crawler, "_task_interrupted", False)
 
-    await run_with_account_pool(run_once)
+    try:
+        await run_with_account_pool(run_once)
+    except NoAccountAvailableError as e:
+        print(f"[Main] 账号池任务未完成: {e}")
+        raise SystemExit(1)
 
 
 async def main() -> None:
