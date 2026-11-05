@@ -190,6 +190,15 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
                 rich_help_panel="Basic Configuration",
             ),
         ] = config.START_PAGE,
+        resume: Annotated[
+            str,
+            typer.Option(
+                "--resume",
+                help="Enable checkpoint resume (断点续爬), true/false (xhs, dy)",
+                rich_help_panel="Basic Configuration",
+                show_default=True,
+            ),
+        ] = str(config.ENABLE_CHECKPOINT),
         keywords: Annotated[
             str,
             typer.Option(
@@ -360,6 +369,7 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
         config.LOGIN_TYPE = lt.value
         config.CRAWLER_TYPE = crawler_type.value
         config.START_PAGE = start
+        config.ENABLE_CHECKPOINT = _to_bool(resume)
         config.KEYWORDS = keywords
         config.ENABLE_GET_COMMENTS = enable_comment
         config.ENABLE_GET_SUB_COMMENTS = enable_sub_comment

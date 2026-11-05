@@ -37,6 +37,7 @@ from media_downloader import MediaDownloader
 from proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
 from store import douyin as douyin_store
 from tools import utils
+from tools.checkpoint import CrawlerCheckpoint, create_checkpoint
 from tools.cdp_browser import CDPBrowserManager
 from var import crawler_type_var, source_keyword_var
 
@@ -49,6 +50,9 @@ from .login import DouYinLogin
 
 
 class DouYinCrawler(AbstractCrawler):
+    # Disabled placeholder (no file IO) until start() builds the task's real checkpoint.
+    checkpoint: CrawlerCheckpoint = CrawlerCheckpoint("dy", "none", {}, enabled=False)
+    _task_interrupted: bool = False
     context_page: Page
     dy_client: DouYinClient
     browser_context: BrowserContext
@@ -115,6 +119,8 @@ class DouYinCrawler(AbstractCrawler):
                     urls=self.cookie_urls,
                 )
             crawler_type_var.set(config.CRAWLER_TYPE)
+            self.checkpoint = self._create_checkpoint()
+            self._task_interrupted = False
             if config.CRAWLER_TYPE == "search":
                 # Search for notes and retrieve their comment information.
                 await self.search()
@@ -125,7 +131,31 @@ class DouYinCrawler(AbstractCrawler):
                 # Get the information and comments of the specified creator
                 await self.get_creators_and_videos()
 
+            if self._task_interrupted:
+                utils.logger.warning(
+                    f"[DouYinCrawler.start] 任务未完整结束，断点已保留，相同参数重新运行即可继续: {self.checkpoint.path}"
+                )
+            else:
+                self.checkpoint.finish()
+
             utils.logger.info("[DouYinCrawler.start] Douyin Crawler finished ...")
+
+    def _create_checkpoint(self) -> CrawlerCheckpoint:
+        """Checkpoint keyed by everything that changes what this task crawls."""
+        if config.CRAWLER_TYPE == "search":
+            inputs = {
+                "keywords": config.KEYWORDS,
+                "publish_time": config.PUBLISH_TIME_TYPE,
+                "start_page": config.START_PAGE,
+                "max_notes": config.CRAWLER_MAX_NOTES_COUNT,
+            }
+        elif config.CRAWLER_TYPE == "detail":
+            inputs = {"awemes": list(config.DY_SPECIFIED_ID_LIST)}
+        else:
+            inputs = {"creators": list(config.DY_CREATOR_ID_LIST)}
+        inputs["comments"] = [config.ENABLE_GET_COMMENTS, config.ENABLE_GET_SUB_COMMENTS,
+                              config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES]
+        return create_checkpoint("dy", config.CRAWLER_TYPE, inputs)
 
     async def search(self) -> None:
         utils.logger.info("[DouYinCrawler.search] Begin search douyin keywords")
@@ -135,13 +165,22 @@ class DouYinCrawler(AbstractCrawler):
         start_page = config.START_PAGE  # start page number
         for keyword in config.KEYWORDS.split(","):
             source_keyword_var.set(keyword)
+            scope = f"keyword:{keyword}"
+            if self.checkpoint.is_scope_done(scope):
+                utils.logger.info(f"[DouYinCrawler.search] 断点续爬：关键词已完成，跳过: {keyword}")
+                continue
             utils.logger.info(f"[DouYinCrawler.search] Current keyword: {keyword}")
             aweme_list: List[str] = []
             page = 0
+            keyword_failed = False
             dy_search_id = ""
             while (page - start_page + 1) * dy_limit_count <= config.CRAWLER_MAX_NOTES_COUNT:
                 if page < start_page:
                     utils.logger.info(f"[DouYinCrawler.search] Skip {page}")
+                    page += 1
+                    continue
+                if self.checkpoint.is_page_done(scope, page):
+                    utils.logger.info(f"[DouYinCrawler.search] 断点续爬：第 {page} 页已完成，跳过")
                     page += 1
                     continue
                 try:
@@ -157,11 +196,14 @@ class DouYinCrawler(AbstractCrawler):
                         break
                 except DataFetchError:
                     utils.logger.error(f"[DouYinCrawler.search] search douyin keyword: {keyword} failed")
+                    keyword_failed = True
                     break
 
+                current_page = page
                 page += 1
                 if "data" not in posts_res:
                     utils.logger.error(f"[DouYinCrawler.search] search douyin keyword: {keyword} failed，账号也许被风控了。")
+                    keyword_failed = True
                     break
                 dy_search_id = posts_res.get("extra", {}).get("logid", "")
                 page_aweme_list = []
@@ -170,17 +212,26 @@ class DouYinCrawler(AbstractCrawler):
                         aweme_info: Dict = (post_item.get("aweme_info") or post_item.get("aweme_mix_info", {}).get("mix_items")[0])
                     except TypeError:
                         continue
-                    aweme_list.append(aweme_info.get("aweme_id", ""))
-                    page_aweme_list.append(aweme_info.get("aweme_id", ""))
+                    aweme_id = aweme_info.get("aweme_id", "")
+                    if self.checkpoint.is_item_done(scope, aweme_id):
+                        continue
+                    aweme_list.append(aweme_id)
+                    page_aweme_list.append(aweme_id)
                     await douyin_store.update_douyin_aweme(aweme_item=aweme_info)
                     await self.download_media(aweme_item=aweme_info)
-                
+
                 # Batch get note comments for the current page
                 await self.batch_get_note_comments(page_aweme_list)
+                self.checkpoint.mark_items_done(scope, page_aweme_list)
+                self.checkpoint.mark_page_done(scope, current_page)
 
                 # Sleep after each page navigation
                 await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
                 utils.logger.info(f"[DouYinCrawler.search] Sleeping for {config.CRAWLER_MAX_SLEEP_SEC} seconds after page {page-1}")
+            if keyword_failed:
+                self._task_interrupted = True
+            else:
+                self.checkpoint.mark_scope_done(scope)
             utils.logger.info(f"[DouYinCrawler.search] keyword:{keyword}, aweme_list:{aweme_list}")
 
     async def get_specified_awemes(self):
@@ -209,14 +260,27 @@ class DouYinCrawler(AbstractCrawler):
                 utils.logger.error(f"[DouYinCrawler.get_specified_awemes] Failed to parse video URL: {e}")
                 continue
 
+        scope = "detail"
+        requested_ids = aweme_id_list
+        aweme_id_list = self.checkpoint.filter_pending(scope, aweme_id_list)
+        if len(aweme_id_list) < len(requested_ids):
+            utils.logger.info(
+                f"[DouYinCrawler.get_specified_awemes] 断点续爬：跳过已完成 {len(requested_ids) - len(aweme_id_list)} 个视频"
+            )
         semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
         task_list = [self.get_aweme_detail(aweme_id=aweme_id, semaphore=semaphore) for aweme_id in aweme_id_list]
         aweme_details = await asyncio.gather(*task_list)
+        fetched_ids = []
         for aweme_detail in aweme_details:
             if aweme_detail is not None:
                 await douyin_store.update_douyin_aweme(aweme_item=aweme_detail)
                 await self.download_media(aweme_item=aweme_detail)
+                fetched_ids.append(aweme_detail.get("aweme_id", ""))
         await self.batch_get_note_comments(aweme_id_list)
+        self.checkpoint.mark_items_done(scope, fetched_ids)
+        if self.checkpoint.filter_pending(scope, requested_ids):
+            # Some videos failed; keep the checkpoint so a rerun retries only those.
+            self._task_interrupted = True
 
     async def get_aweme_detail(self, aweme_id: str, semaphore: asyncio.Semaphore) -> Any:
         """Get note detail"""
@@ -286,6 +350,12 @@ class DouYinCrawler(AbstractCrawler):
                 utils.logger.error(f"[DouYinCrawler.get_creators_and_videos] Failed to parse creator URL: {e}")
                 continue
 
+            scope = f"creator:{user_id}"
+            if self.checkpoint.is_scope_done(scope):
+                utils.logger.info(f"[DouYinCrawler.get_creators_and_videos] 断点续爬：创作者已完成，跳过: {user_id}")
+                continue
+            self._creator_scope = scope
+
             creator_info: Dict = await self.dy_client.get_user_info(user_id)
             if creator_info:
                 await douyin_store.save_creator(user_id, creator=creator_info)
@@ -293,13 +363,20 @@ class DouYinCrawler(AbstractCrawler):
             # Get all video information of the creator
             all_video_list = await self.dy_client.get_all_user_aweme_posts(sec_user_id=user_id, callback=self.fetch_creator_video_detail)
 
-            video_ids = [video_item.get("aweme_id") for video_item in all_video_list]
+            video_ids = self.checkpoint.filter_pending(
+                scope, [video_item.get("aweme_id") for video_item in all_video_list]
+            )
             await self.batch_get_note_comments(video_ids)
+            self.checkpoint.mark_items_done(scope, video_ids)
+            self.checkpoint.mark_scope_done(scope)
 
     async def fetch_creator_video_detail(self, video_list: List[Dict]):
         """
         Concurrently obtain the specified post list and save the data
         """
+        scope = getattr(self, "_creator_scope", None)
+        if scope:
+            video_list = [v for v in video_list if not self.checkpoint.is_item_done(scope, v.get("aweme_id"))]
         semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
         task_list = [self.get_aweme_detail(post_item.get("aweme_id"), semaphore) for post_item in video_list]
 

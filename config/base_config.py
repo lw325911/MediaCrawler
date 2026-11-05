@@ -98,6 +98,12 @@ USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
 # The number of pages to start crawling starts from the first page by default
 START_PAGE = 1
 
+# 断点续爬：开启后爬取进度实时写入 CHECKPOINT_DIR，任务中断（Ctrl+C、崩溃、被风控）后
+# 用相同参数重新运行会跳过已完成的页和内容；任务正常结束会自动删除断点文件。
+# 目前支持：xhs、dy 的 search / detail / creator 模式。命令行开关：--resume
+ENABLE_CHECKPOINT = True
+CHECKPOINT_DIR = "data/checkpoints"
+
 # Control the number of crawled videos/posts
 CRAWLER_MAX_NOTES_COUNT = 15
 
