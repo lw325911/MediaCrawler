@@ -28,8 +28,20 @@ from tools.utils import utils
 from tools.words import AsyncWordCloudGenerator
 
 class AsyncFileWriter:
+    # Store implementations create a new writer for every item, so a per-instance
+    # lock would not serialize anything. Share one lock per output file instead.
+    _file_locks: Dict[str, asyncio.Lock] = {}
+
+    @classmethod
+    def _lock_for(cls, file_path: str) -> asyncio.Lock:
+        key = os.path.abspath(file_path)
+        lock = cls._file_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._file_locks[key] = lock
+        return lock
+
     def __init__(self, platform: str, crawler_type: str):
-        self.lock = asyncio.Lock()
         self.platform = platform
         self.crawler_type = crawler_type
         self.wordcloud_generator = AsyncWordCloudGenerator() if config.ENABLE_GET_WORDCLOUD else None
@@ -45,7 +57,7 @@ class AsyncFileWriter:
 
     async def write_to_csv(self, item: Dict, item_type: str):
         file_path = self._get_file_path('csv', item_type)
-        async with self.lock:
+        async with self._lock_for(file_path):
             file_exists = os.path.exists(file_path)
             async with aiofiles.open(file_path, 'a', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=item.keys())
@@ -55,13 +67,13 @@ class AsyncFileWriter:
 
     async def write_to_jsonl(self, item: Dict, item_type: str):
         file_path = self._get_file_path('jsonl', item_type)
-        async with self.lock:
+        async with self._lock_for(file_path):
             async with aiofiles.open(file_path, 'a', encoding='utf-8') as f:
                 await f.write(json.dumps(item, ensure_ascii=False) + '\n')
 
     async def write_single_item_to_json(self, item: Dict, item_type: str):
         file_path = self._get_file_path('json', item_type)
-        async with self.lock:
+        async with self._lock_for(file_path):
             existing_data = []
             if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                 async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:

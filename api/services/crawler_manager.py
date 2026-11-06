@@ -21,6 +21,8 @@ import itertools
 import subprocess
 import signal
 import os
+import shutil
+import sys
 from typing import Optional, List, Tuple
 from datetime import datetime
 from pathlib import Path
@@ -254,7 +256,12 @@ class CrawlerManager:
 
     def _build_command(self, config: CrawlerStartRequest) -> list:
         """Build main.py command line arguments"""
-        cmd = ["uv", "run", "python", "main.py"]
+        # Prefer uv when installed; otherwise fall back to the interpreter running the API,
+        # so the WebUI also works for users who installed dependencies with pip.
+        if shutil.which("uv"):
+            cmd = ["uv", "run", "python", "main.py"]
+        else:
+            cmd = [sys.executable, "main.py"]
 
         cmd.extend(["--platform", config.platform.value])
         cmd.extend(["--lt", config.login_type.value])
