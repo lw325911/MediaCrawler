@@ -21,7 +21,6 @@
 import asyncio
 import os
 import random
-import time
 from asyncio import Task
 from typing import Dict, List, Optional, Tuple
 
@@ -307,14 +306,18 @@ class KuaishouCrawler(AbstractCrawler):
         )
         semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
         task_list: List[Task] = []
+        # Set the list before creating tasks: each task copies the context at
+        # creation time, so they must all share a reference to this same list.
+        comment_tasks_var.set(task_list)
         for video_id in video_id_list:
             task = asyncio.create_task(
                 self.get_comments(video_id, semaphore), name=video_id
             )
             task_list.append(task)
 
-        comment_tasks_var.set(task_list)
-        await asyncio.gather(*task_list)
+        # return_exceptions: tasks cancelled by the back-off logic in get_comments
+        # must not propagate CancelledError and abort the whole crawl.
+        await asyncio.gather(*task_list, return_exceptions=True)
 
     async def get_comments(self, video_id: str, semaphore: asyncio.Semaphore):
         """
@@ -349,12 +352,13 @@ class KuaishouCrawler(AbstractCrawler):
                 utils.logger.error(
                     f"[KuaishouCrawler.get_comments] may be been blocked, err:{e}"
                 )
-                # use time.sleeep block main coroutine instead of asyncio.sleep and cacel running comment task
-                # maybe kuaishou block our request, we will take a nap and update the cookie again
-                current_running_tasks = comment_tasks_var.get()
-                for task in current_running_tasks:
-                    task.cancel()
-                time.sleep(20)
+                # Kuaishou may be blocking us: cancel the other running comment tasks,
+                # back off without blocking the event loop, then refresh the cookie.
+                current_task = asyncio.current_task()
+                for task in comment_tasks_var.get():
+                    if task is not current_task and not task.done():
+                        task.cancel()
+                await asyncio.sleep(20)
                 await self.context_page.goto(f"{self.index_url}?isHome=1")
                 await self.ks_client.update_cookies(
                     browser_context=self.browser_context,

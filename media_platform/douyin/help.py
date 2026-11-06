@@ -24,6 +24,7 @@
 # @Time    : 2024/6/10 02:24
 # @Desc    : Get a_bogus parameter, for learning and communication only, do not use for commercial purposes, contact author to delete if infringement
 
+import asyncio
 import random
 import re
 from typing import Optional
@@ -62,7 +63,8 @@ async def get_a_bogus(url: str, params: str, post_data: dict, user_agent: str, p
     """
     Get a_bogus parameter, currently does not support POST request type signature
     """
-    return get_a_bogus_from_js(url, params, user_agent)
+    # Signing runs a Node.js process (or a blocking HTTP call); keep it off the event loop.
+    return await asyncio.to_thread(get_a_bogus_from_js, url, params, user_agent)
 
 def get_a_bogus_from_js(url: str, params: str, user_agent: str):
     """

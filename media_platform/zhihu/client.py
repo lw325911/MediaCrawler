@@ -76,7 +76,8 @@ class ZhiHuClient(AbstractApiClient, ProxyRefreshMixin):
         d_c0 = self.cookie_dict.get("d_c0")
         if not d_c0:
             raise Exception("d_c0 not found in cookies")
-        sign_res = sign(url, self.default_headers["cookie"])
+        # Signing runs a Node.js process (or a blocking HTTP call); keep it off the event loop.
+        sign_res = await asyncio.to_thread(sign, url, self.default_headers["cookie"])
         headers = self.default_headers.copy()
         headers['x-zst-81'] = sign_res["x-zst-81"]
         headers['x-zse-96'] = sign_res["x-zse-96"]
